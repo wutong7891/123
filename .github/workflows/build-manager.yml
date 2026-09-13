@@ -117,7 +117,9 @@ jobs:
     uses: ./.github/workflows/ksud.yml
     with:
       target: ${{ matrix.target }}
-      pack_lkm: true
+      # The Android root manager must not carry any KMI modules. KMI files are
+      # distributed only through the dedicated bundle and offline patcher.
+      pack_lkm: false
       pack_ksuinit: true
   
   build-ksud-extra:
