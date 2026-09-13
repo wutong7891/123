@@ -35,17 +35,13 @@ jobs:
     outputs:
       expected_size: ${{ steps.extract.outputs.expected_size }}
       expected_hash: ${{ steps.extract.outputs.expected_hash }}
-      keystore: ${{ steps.gen.outputs.keystore }}
-      keystore_password: ${{ steps.gen.outputs.keystore_password }}
-      key_password: ${{ steps.gen.outputs.key_password }}
     steps:
       - name: Generate temporary keystore
-        id: gen
         run: |
           KEYSTORE_PASSWORD=$(openssl rand -hex 32)
           KEY_PASSWORD=$(openssl rand -hex 32)
-          echo "keystore_password=$KEYSTORE_PASSWORD" >> $GITHUB_OUTPUT
-          echo "key_password=$KEY_PASSWORD" >> $GITHUB_OUTPUT
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
 
           keytool -genkeypair \
             -alias wutong-key \
@@ -57,18 +53,14 @@ jobs:
             -storetype JKS \
             -keystore wutong-key.jks
 
-          echo "keystore=$(base64 -w 0 wutong-key.jks)" >> $GITHUB_OUTPUT
-
       - name: Extract certificate hash and size
         id: extract
-        env:
-          STORE_PASS: ${{ steps.gen.outputs.keystore_password }}
         run: |
           # Export DER certificate
           keytool -exportcert \
             -alias wutong-key \
             -keystore wutong-key.jks \
-            -storepass "$STORE_PASS" \
+            -storepass "$KEYSTORE_PASSWORD" \
             -file pr-cert.der
 
           # Calculate size in hex
@@ -89,8 +81,8 @@ jobs:
           cp wutong-key.jks signing-key/
           {
             echo "KEY_ALIAS=wutong-key"
-            echo "KEYSTORE_PASSWORD=${{ steps.gen.outputs.keystore_password }}"
-            echo "KEY_PASSWORD=${{ steps.gen.outputs.key_password }}"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "KEY_PASSWORD=$KEY_PASSWORD"
             echo "CERTIFICATE_SIZE=${{ steps.extract.outputs.expected_size }}"
             echo "CERTIFICATE_SHA256=${{ steps.extract.outputs.expected_hash }}"
             echo "PACKAGE_NAME=com.jinfuwei.wutong"
@@ -107,8 +99,8 @@ jobs:
     needs: generate-key
     uses: ./.github/workflows/build-lkm.yml
     with:
-      expected_size2: ${{ needs.generate-key.outputs.expected_size || '' }}
-      expected_hash2: ${{ needs.generate-key.outputs.expected_hash || '' }}
+      expected_size: ${{ needs.generate-key.outputs.expected_size }}
+      expected_hash: ${{ needs.generate-key.outputs.expected_hash }}
       manager_package: com.jinfuwei.wutong
     secrets: inherit
 
@@ -164,18 +156,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download signing key
+        uses: actions/download-artifact@v8
+        with:
+          name: wutong-private-signing-key
+          path: artifacts/wutong-key
+
       - name: Write signing key
-        env:
-          WUTONG_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
-          WUTONG_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
-          WUTONG_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
         run: |
-          test -n "$WUTONG_KEYSTORE"
-          echo "$WUTONG_KEYSTORE" | base64 -d > wutong-key.jks
+          source ../artifacts/wutong-key/credentials.txt
+          cp ../artifacts/wutong-key/wutong-key.jks ./wutong-key.jks
           {
-            echo KEYSTORE_PASSWORD="$WUTONG_KEYSTORE_PASSWORD"
+            echo KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD"
             echo KEY_ALIAS='wutong-key'
-            echo KEY_PASSWORD="$WUTONG_KEY_PASSWORD"
+            echo KEY_PASSWORD="$KEY_PASSWORD"
             echo KEYSTORE_FILE='wutong-key.jks'
           } >> gradle.properties
 
@@ -250,6 +244,12 @@ jobs:
           name: ksud-x86_64-linux-android
           path: artifacts/ksud-x86_64-linux-android
 
+      - name: Download signing key
+        uses: actions/download-artifact@v8
+        with:
+          name: wutong-private-signing-key
+          path: signing-key
+
       - name: Place manager apk and ksud artifacts
         run: |
           mkdir -p manager/app/build/outputs/apk/release
@@ -268,17 +268,13 @@ jobs:
 
       - name: Prepare signing inputs
         if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
-        env:
-          WUTONG_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
-          WUTONG_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
-          WUTONG_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
         run: |
-          test -n "$WUTONG_KEYSTORE"
-          echo "$WUTONG_KEYSTORE" | base64 -d > wutong-key.jks
+          source signing-key/credentials.txt
+          cp signing-key/wutong-key.jks ./wutong-key.jks
           echo "SIGN_KEYSTORE_FILE=wutong-key.jks" >> $GITHUB_ENV
           echo "SIGN_KEY_ALIAS=wutong-key" >> $GITHUB_ENV
-          echo "SIGN_KEYSTORE_PASSWORD=$WUTONG_KEYSTORE_PASSWORD" >> $GITHUB_ENV
-          echo "SIGN_KEY_PASSWORD=$WUTONG_KEY_PASSWORD" >> $GITHUB_ENV
+          echo "SIGN_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+          echo "SIGN_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
 
       - name: Repack and resign
         if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
