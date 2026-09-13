@@ -83,10 +83,32 @@ jobs:
           echo "Certificate size: $SIZE_HEX ($SIZE_DEC bytes)"
           echo "Certificate hash: $HASH"
 
+      - name: Package private signing key
+        run: |
+          mkdir -p signing-key
+          cp wutong-key.jks signing-key/
+          {
+            echo "KEY_ALIAS=wutong-key"
+            echo "KEYSTORE_PASSWORD=${{ steps.gen.outputs.keystore_password }}"
+            echo "KEY_PASSWORD=${{ steps.gen.outputs.key_password }}"
+            echo "CERTIFICATE_SIZE=${{ steps.extract.outputs.expected_size }}"
+            echo "CERTIFICATE_SHA256=${{ steps.extract.outputs.expected_hash }}"
+            echo "PACKAGE_NAME=com.jinfuwei.wutong"
+          } > signing-key/credentials.txt
+
+      - name: Upload private signing key
+        uses: actions/upload-artifact@v7
+        with:
+          name: wutong-private-signing-key
+          path: signing-key/
+          retention-days: 1
+
   build-lkm:
     needs: generate-key
     uses: ./.github/workflows/build-lkm.yml
     with:
+      expected_size2: ${{ needs.generate-key.outputs.expected_size || '' }}
+      expected_hash2: ${{ needs.generate-key.outputs.expected_hash || '' }}
       manager_package: com.jinfuwei.wutong
     secrets: inherit
 
@@ -144,9 +166,9 @@ jobs:
 
       - name: Write signing key
         env:
-          WUTONG_KEYSTORE: ${{ secrets.KEYSTORE }}
-          WUTONG_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          WUTONG_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          WUTONG_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
+          WUTONG_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
+          WUTONG_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
         run: |
           test -n "$WUTONG_KEYSTORE"
           echo "$WUTONG_KEYSTORE" | base64 -d > wutong-key.jks
@@ -247,9 +269,9 @@ jobs:
       - name: Prepare signing inputs
         if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
         env:
-          WUTONG_KEYSTORE: ${{ secrets.KEYSTORE }}
-          WUTONG_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          WUTONG_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          WUTONG_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
+          WUTONG_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
+          WUTONG_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
         run: |
           test -n "$WUTONG_KEYSTORE"
           echo "$WUTONG_KEYSTORE" | base64 -d > wutong-key.jks
