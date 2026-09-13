@@ -83,31 +83,10 @@ jobs:
           echo "Certificate size: $SIZE_HEX ($SIZE_DEC bytes)"
           echo "Certificate hash: $HASH"
 
-      - name: Package private signing key
-        run: |
-          mkdir -p signing-key
-          cp wutong-key.jks signing-key/
-          {
-            echo "KEY_ALIAS=wutong-key"
-            echo "KEYSTORE_PASSWORD=${{ steps.gen.outputs.keystore_password }}"
-            echo "KEY_PASSWORD=${{ steps.gen.outputs.key_password }}"
-            echo "CERTIFICATE_SIZE=${{ steps.extract.outputs.expected_size }}"
-            echo "CERTIFICATE_SHA256=${{ steps.extract.outputs.expected_hash }}"
-          } > signing-key/credentials.txt
-
-      - name: Upload private signing key
-        uses: actions/upload-artifact@v7
-        with:
-          name: wutong-private-signing-key
-          path: signing-key/
-          retention-days: 1
-
   build-lkm:
     needs: generate-key
     uses: ./.github/workflows/build-lkm.yml
     with:
-      expected_size2: ${{ needs.generate-key.outputs.expected_size || '' }}
-      expected_hash2: ${{ needs.generate-key.outputs.expected_hash || '' }}
       manager_package: com.jinfuwei.wutong
     secrets: inherit
 
@@ -165,15 +144,16 @@ jobs:
 
       - name: Write signing key
         env:
-          PR_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
-          PR_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
-          PR_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
+          WUTONG_KEYSTORE: ${{ secrets.KEYSTORE }}
+          WUTONG_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          WUTONG_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "$PR_KEYSTORE" | base64 -d > wutong-key.jks
+          test -n "$WUTONG_KEYSTORE"
+          echo "$WUTONG_KEYSTORE" | base64 -d > wutong-key.jks
           {
-            echo KEYSTORE_PASSWORD="$PR_KEYSTORE_PASSWORD"
+            echo KEYSTORE_PASSWORD="$WUTONG_KEYSTORE_PASSWORD"
             echo KEY_ALIAS='wutong-key'
-            echo KEY_PASSWORD="$PR_KEY_PASSWORD"
+            echo KEY_PASSWORD="$WUTONG_KEY_PASSWORD"
             echo KEYSTORE_FILE='wutong-key.jks'
           } >> gradle.properties
 
@@ -194,7 +174,7 @@ jobs:
           ./gradlew clean assembleRelease
 
       - name: Upload build artifact
-        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) || github.ref_type == 'tag' }}
+        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
         uses: actions/upload-artifact@v7
         with:
           name: manager-gradle
@@ -265,20 +245,21 @@ jobs:
           cp -f "$X86_64_KSUD" target/x86_64-linux-android/release/ksud
 
       - name: Prepare signing inputs
-        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) || github.ref_type == 'tag' }}
+        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
         env:
-          PR_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
-          PR_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
-          PR_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
+          WUTONG_KEYSTORE: ${{ secrets.KEYSTORE }}
+          WUTONG_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          WUTONG_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "$PR_KEYSTORE" | base64 -d > wutong-key.jks
+          test -n "$WUTONG_KEYSTORE"
+          echo "$WUTONG_KEYSTORE" | base64 -d > wutong-key.jks
           echo "SIGN_KEYSTORE_FILE=wutong-key.jks" >> $GITHUB_ENV
           echo "SIGN_KEY_ALIAS=wutong-key" >> $GITHUB_ENV
-          echo "SIGN_KEYSTORE_PASSWORD=$PR_KEYSTORE_PASSWORD" >> $GITHUB_ENV
-          echo "SIGN_KEY_PASSWORD=$PR_KEY_PASSWORD" >> $GITHUB_ENV
+          echo "SIGN_KEYSTORE_PASSWORD=$WUTONG_KEYSTORE_PASSWORD" >> $GITHUB_ENV
+          echo "SIGN_KEY_PASSWORD=$WUTONG_KEY_PASSWORD" >> $GITHUB_ENV
 
       - name: Repack and resign
-        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) || github.ref_type == 'tag' }}
+        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
         run: |
           python3 repack_apk.py repack \
             -b release \
@@ -292,7 +273,7 @@ jobs:
             --strip
 
       - name: Upload build artifact
-        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) || github.ref_type == 'tag' }}
+        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
         uses: actions/upload-artifact@v7
         with:
           name: manager
