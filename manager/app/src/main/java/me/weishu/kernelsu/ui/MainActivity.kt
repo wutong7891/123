@@ -56,6 +56,8 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.flow.MutableStateFlow
 import me.weishu.kernelsu.Natives
 import me.weishu.kernelsu.R
+import me.weishu.kernelsu.license.ActivationScreen
+import me.weishu.kernelsu.license.DeviceActivation
 import me.weishu.kernelsu.ui.component.bottombar.BottomBar
 import me.weishu.kernelsu.ui.component.bottombar.MainPagerState
 import me.weishu.kernelsu.ui.component.bottombar.SideRail
@@ -107,6 +109,21 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val activation = DeviceActivation(this)
+        if (!activation.isActivated()) {
+            setContent {
+                ActivationScreen(
+                    deviceId = activation.deviceId,
+                    onActivate = { code ->
+                        activation.activate(code).also { activated ->
+                            if (activated) recreate()
+                        }
+                    },
+                )
+            }
+            return
+        }
 
         val isManager = Natives.isManager
         if (isManager && !Natives.requireNewKernel()) install()

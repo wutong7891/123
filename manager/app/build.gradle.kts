@@ -18,6 +18,7 @@ val androidSourceCompatibility: JavaVersion by rootProject.extra
 val androidTargetCompatibility: JavaVersion by rootProject.extra
 val managerVersionCode: Int by rootProject.extra
 val managerVersionName: String by rootProject.extra
+val licensePublicKey = System.getenv("WUTONG_LICENSE_PUBLIC_KEY").orEmpty()
 
 apksign {
     storeFileProperty = "KEYSTORE_FILE"
@@ -123,6 +124,7 @@ android {
         versionName = managerVersionName
 
         buildConfigField("boolean", "IS_PR_BUILD", isPrBuild.toString())
+        buildConfigField("String", "LICENSE_PUBLIC_KEY_B64", "\"$licensePublicKey\"")
 
         externalNativeBuild {
             cmake {

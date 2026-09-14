@@ -75,10 +75,27 @@ jobs:
           echo "Certificate size: $SIZE_HEX ($SIZE_DEC bytes)"
           echo "Certificate hash: $HASH"
 
+      - name: Generate device activation key pair
+        run: |
+          openssl ecparam -name prime256v1 -genkey -noout -out license-private.pem
+          openssl pkcs8 -topk8 -nocrypt \
+            -in license-private.pem \
+            -outform DER \
+            -out license-private-key.pk8
+          openssl ec -in license-private.pem \
+            -pubout \
+            -outform DER \
+            -out license-public-key.der
+
+          echo "WUTONG_LICENSE_PUBLIC_KEY=$(base64 -w0 license-public-key.der)" >> $GITHUB_ENV
+          echo "WUTONG_LICENSE_PRIVATE_KEY=$(base64 -w0 license-private-key.pk8)" >> $GITHUB_ENV
+
       - name: Package private signing key
         run: |
           mkdir -p signing-key
           cp wutong-key.jks signing-key/
+          cp license-private-key.pk8 signing-key/
+          cp license-public-key.der signing-key/
           {
             echo "KEY_ALIAS=wutong-key"
             echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
@@ -86,6 +103,8 @@ jobs:
             echo "CERTIFICATE_SIZE=${{ steps.extract.outputs.expected_size }}"
             echo "CERTIFICATE_SHA256=${{ steps.extract.outputs.expected_hash }}"
             echo "PACKAGE_NAME=com.jinfuwei.wutong"
+            echo "LICENSE_SCHEME=ECDSA-P256-SHA256"
+            echo "LICENSE_PUBLIC_KEY_SHA256=$(sha256sum license-public-key.der | awk '{print $1}')"
           } > signing-key/credentials.txt
 
       - name: Upload private signing key
@@ -174,6 +193,8 @@ jobs:
             echo KEY_PASSWORD="$KEY_PASSWORD"
             echo KEYSTORE_FILE='wutong-key.jks'
           } >> gradle.properties
+          echo "WUTONG_LICENSE_PUBLIC_KEY=$(base64 -w0 ../artifacts/wutong-key/license-public-key.der)" >> $GITHUB_ENV
+          echo "WUTONG_LICENSE_PRIVATE_KEY=$(base64 -w0 ../artifacts/wutong-key/license-private-key.pk8)" >> $GITHUB_ENV
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -197,6 +218,13 @@ jobs:
         with:
           name: manager-gradle
           path: manager/app/build/outputs/apk/release/*.apk
+
+      - name: Upload device authorizer
+        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: wutong-device-authorizer
+          path: manager/authorizer/build/outputs/apk/release/*.apk
 
       - name: Upload mappings
         uses: actions/upload-artifact@v7
